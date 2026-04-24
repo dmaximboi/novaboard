@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>NovaClass v2</title>
+
+<!-- KaTeX for beautiful math rendering -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/contrib/auto-render.min.js"></script>
+
+<!-- Link to external stylesheet -->
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<div class="header">
+  <div class="brand">
+    <div class="brand-icon">🎓</div>
+    <div class="brand-name">Nova<span>Class</span></div>
+  </div>
+  <div class="subject-tabs">
+    <button class="tab active" onclick="app.setSubject(this,'Physics')">Physics</button>
+    <button class="tab" onclick="app.setSubject(this,'Math')">Math</button>
+    <button class="tab" onclick="app.setSubject(this,'Chemistry')">Chemistry</button>
+    <button class="tab" onclick="app.setSubject(this,'English')">English</button>
+  </div>
+  <div>
+    <button class="btn btn-record" id="recordBtn" onclick="recorder.toggleRecording()">⏺ Record</button>
+  </div>
+</div>
+
+<!-- ─── BOARD AREA ─── -->
+<div class="board-layout">
+  <!-- Tools Sidebar -->
+  <div class="sidebar">
+    <button class="tool-btn active" id="tool-cursor" title="Interact/Text" onclick="drawing.setTool('cursor')">👆</button>
+    <button class="tool-btn" id="tool-pen" title="Chalk Pen" onclick="drawing.setTool('pen')">🖍️</button>
+    <button class="tool-btn" id="tool-pencil" title="Chalk Pencil" onclick="drawing.setTool('pencil')">✏️</button>
+    <button class="tool-btn" id="tool-eraser" title="Eraser" onclick="drawing.setTool('eraser')">🧼</button>
+    
+    <div style="height:1px; width:40px; background:rgba(255,255,255,0.1); margin:4px 0;"></div>
+    
+    <div class="color-picker active" style="background:var(--chalk);" onclick="drawing.setColor('var(--chalk)', this)"></div>
+    <div class="color-picker" style="background:var(--chalk-yellow);" onclick="drawing.setColor('var(--chalk-yellow)', this)"></div>
+    <div class="color-picker" style="background:var(--chalk-blue);" onclick="drawing.setColor('var(--chalk-blue)', this)"></div>
+    <div class="color-picker" style="background:var(--chalk-red);" onclick="drawing.setColor('var(--chalk-red)', this)"></div>
+    <input type="color" id="customColor" title="Custom Color" onchange="drawing.setColor(this.value, this)" />
+
+    <input type="range" class="thickness-slider" id="thicknessSlider" min="2" max="20" value="4" title="Line Thickness" oninput="drawing.setThickness(this.value)" />
+  </div>
+
+  <div class="board-wrap">
+    <div class="board-frame">
+      <div class="board" id="board">
+        <!-- watermark -->
+        <div class="board-watermark">NovaClass</div>
+        <!-- chalk piece -->
+        <div class="chalk-piece">🖍️</div>
+
+        <div class="board-content" id="boardContent">
+          <!-- Canvas for drawing -->
+          <canvas id="drawCanvas"></canvas>
+          
+          <!-- writing area -->
+          <div class="writing-area" id="writingArea">
+            <div class="section-label q-label" id="qLabel" style="display:none">Question ·</div>
+            <div class="chalk-line question-text" id="questionDisplay"></div>
+            <div class="chalk-divider" id="divider"></div>
+            <div class="section-label s-label section-gap" id="sLabel" style="display:none">Solution ·</div>
+            <div class="chalk-line solution-text" id="solutionDisplay"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── CONTROLS ─── -->
+<div class="controls">
+  <!-- API Key row -->
+  <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <div class="input-group" style="max-width:380px">
+      <label class="input-label">Groq API Key</label>
+      <input class="key-input" id="groqKey" type="password" placeholder="gsk_...  (stored locally only)" />
+    </div>
+    <div class="input-group" style="max-width:220px">
+      <label class="input-label">Active Subject</label>
+      <div style="color:var(--chalk-yellow);font-family:'Special Elite',cursive;font-size:16px;padding-top:6px" id="subjectDisplay">⚛️ Physics</div>
+    </div>
+    <div class="input-group" style="max-width:150px">
+      <label class="input-label">Text Size</label>
+      <input type="range" id="textSizeSlider" min="14" max="40" value="20" oninput="board.setTextSize(this.value)" />
+    </div>
+    <div class="input-group" style="max-width:200px">
+      <label class="input-label">Insert Shape</label>
+      <select class="voice-select" id="shapeSelect" onchange="drawing.insertShape(this.value); this.value=''">
+        <option value="">-- Select --</option>
+        <option value="square">Square (2D)</option>
+        <option value="circle">Circle (2D)</option>
+        <option value="triangle">Triangle (2D)</option>
+        <option value="cube">Cube (3D CSS)</option>
+        <option value="sphere">Sphere (3D CSS)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Question / Solution inputs -->
+  <div class="input-row">
+    <div class="input-group">
+      <label class="input-label">Question</label>
+      <textarea class="chalk-input" id="questionInput" placeholder="e.g. A body of mass 5kg moves at 20 m/s..."></textarea>
+    </div>
+    <div class="input-group">
+      <label class="input-label">Solution (manual) or use AI →</label>
+      <textarea class="chalk-input" id="solutionInput" placeholder="Type solution here, or click 'AI Solve'..."></textarea>
+    </div>
+  </div>
+
+  <!-- Math symbol toolbar -->
+  <div>
+    <div class="input-label" style="margin-bottom:6px">Quick Symbols</div>
+    <div class="symbol-bar" id="symbolBar"></div>
+  </div>
+
+  <!-- Speed / Voice -->
+  <div class="speed-row">
+    <span class="speed-label">Writing Speed</span>
+    <input type="range" id="speedSlider" min="20" max="200" value="60" oninput="app.updateSpeedLabel()"/>
+    <span style="font-size:12px;color:var(--chalk-dim);font-family:'Special Elite',cursive" id="speedLabel">Slow</span>
+    
+    <span class="speed-label" style="margin-left:16px">Voice</span>
+    <select class="voice-select" id="voiceSelect"><option>Loading voices...</option></select>
+    <label style="color:var(--chalk-dim);font-size:13px;font-family:'Special Elite',cursive;display:flex;align-items:center;gap:6px">
+      <input type="checkbox" id="speechToggle" checked style="accent-color:var(--accent)"/> Narrate
+    </label>
+    
+    <label style="color:var(--chalk-dim);font-size:13px;font-family:'Special Elite',cursive;display:flex;align-items:center;gap:6px;margin-left:10px">
+      <input type="checkbox" id="recordAudioToggle" checked style="accent-color:var(--chalk-red)"/> Mic in Record
+    </label>
+  </div>
+
+  <!-- Buttons + status -->
+  <div class="btn-row">
+    <button class="btn btn-ai" id="aiSolveBtn" onclick="app.aiSolve()">🤖 AI Solve</button>
+    <button class="btn btn-primary" id="playBtn" onclick="board.startPresentation()">▶ Start Presentation</button>
+    <button class="btn btn-secondary" onclick="board.clearBoard()">⬜ Clear Board</button>
+    <button class="btn btn-secondary" onclick="board.stopPresentation()">⏹ Stop</button>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">Ready</span>
+  </div>
+</div>
+
+<!-- Link to external scripts -->
+<script src="board.js"></script>
+<script src="drawing.js"></script>
+<script src="recorder.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
