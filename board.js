@@ -2,7 +2,7 @@
 
 const board = {
   isWriting: false,
-  writeTimeout: null,
+  activeTimeouts: [], // ✅ Track ALL timeouts instead of single writeTimeout
   speechUtterance: null,
   voices: [],
 
@@ -15,7 +15,7 @@ const board = {
     const sel = document.getElementById('voiceSelect');
     sel.innerHTML = '';
     const preferred = ['Google UK English Male','Google UK English Female','Daniel','Alex','Karen','Samantha'];
-    let sorted = [...this.voices].sort((a,b) => {
+    let sorted = [...this.voices].sort((a, b) => {
       const ai = preferred.findIndex(p => a.name.includes(p));
       const bi = preferred.findIndex(p => b.name.includes(p));
       if (ai === -1 && bi === -1) return 0;
@@ -36,8 +36,12 @@ const board = {
     return Math.round(200 - v);
   },
 
+  // ✅ Fixed sleep — registers every timeout so stopPresentation can cancel all
   sleep(ms) {
-    return new Promise(r => { this.writeTimeout = setTimeout(r, ms); });
+    return new Promise(resolve => {
+      const id = setTimeout(resolve, ms);
+      this.activeTimeouts.push(id);
+    });
   },
 
   async startPresentation() {
@@ -73,9 +77,11 @@ const board = {
     app.setStatus('done', 'Done');
   },
 
+  // ✅ Fixed stop — cancels every pending timeout, not just the last one
   stopPresentation() {
     this.isWriting = false;
-    if (this.writeTimeout) clearTimeout(this.writeTimeout);
+    this.activeTimeouts.forEach(id => clearTimeout(id));
+    this.activeTimeouts = [];
     if (speechSynthesis.speaking) speechSynthesis.cancel();
     document.getElementById('playBtn').disabled = false;
     app.setStatus('idle', 'Stopped');
@@ -88,10 +94,9 @@ const board = {
     document.getElementById('divider').style.width = '0';
     document.getElementById('qLabel').style.display = 'none';
     document.getElementById('sLabel').style.display = 'none';
-    
-    // Also clear canvas and shapes
+
     if (window.drawing) drawing.clearCanvas();
-    
+
     app.setStatus('idle', 'Ready');
   },
 
@@ -102,7 +107,6 @@ const board = {
 
     app.setStatus('writing', 'Writing...');
 
-    // Read directly what is being typed onto the board
     if (document.getElementById('speechToggle').checked) {
       this.speakText(this.stripLatex(text));
     }
@@ -115,7 +119,7 @@ const board = {
         span.className = 'math-inline';
         try {
           katex.render(seg.content, span, { throwOnError: false, displayMode: false });
-        } catch(e) {
+        } catch (e) {
           span.textContent = seg.content;
         }
         el.appendChild(span);
@@ -133,8 +137,8 @@ const board = {
             span.textContent = ch;
             el.appendChild(span);
           }
-          
-          if (i % 10 === 0) this.scrollToBottom(); // Periodically scroll while typing
+
+          if (i % 10 === 0) this.scrollToBottom();
           await this.sleep(this.getCharDelay());
         }
       }
@@ -144,7 +148,7 @@ const board = {
 
   scrollToBottom() {
     const content = document.getElementById('boardContent');
-    content.scrollTop = content.scrollHeight;
+    if (content) content.scrollTop = content.scrollHeight;
   },
 
   parseSegments(text) {
@@ -186,18 +190,29 @@ const board = {
     });
   },
 
+  // ✅ Fixed speakText — 100ms debounce after cancel prevents Chrome Web Speech deadlock
   speakText(text) {
     if (!window.speechSynthesis) return;
     speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance(text);
-    const selName = document.getElementById('voiceSelect').value;
-    const voice = this.voices.find(v => v.name === selName);
-    if (voice) utter.voice = voice;
-    utter.rate = 0.88;
-    utter.pitch = 1.05;
-    utter.onstart = () => app.setStatus('speaking', 'Narrating...');
-    utter.onend = () => app.setStatus('done', 'Done');
-    speechSynthesis.speak(utter);
-    this.speechUtterance = utter;
+    setTimeout(() => {
+      // Guard: check isWriting is still true before speaking
+      if (!this.isWriting) return;
+      const utter = new SpeechSynthesisUtterance(text);
+      const selName = document.getElementById('voiceSelect').value;
+      const voice = this.voices.find(v => v.name === selName);
+      if (voice) utter.voice = voice;
+      utter.rate = 0.88;
+      utter.pitch = 1.05;
+      utter.onstart = () => app.setStatus('speaking', 'Narrating...');
+      utter.onend = () => app.setStatus('done', 'Done');
+      utter.onerror = (e) => {
+        // Silently ignore interrupted errors (common when stop is called)
+        if (e.error !== 'interrupted') {
+          console.warn('Speech error:', e.error);
+        }
+      };
+      speechSynthesis.speak(utter);
+      this.speechUtterance = utter;
+    }, 100);
   }
 };
